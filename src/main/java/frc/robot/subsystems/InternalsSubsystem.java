@@ -4,34 +4,30 @@
 
 package frc.robot.subsystems;
 
-import com.revrobotics.CANSparkMax;
-import com.revrobotics.CANSparkMax.IdleMode;
-import com.revrobotics.CANSparkMaxLowLevel.MotorType;
-
 import edu.wpi.first.wpilibj.AnalogPotentiometer;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
+/**
+ * Class to hold all methods to invoke Internals for the 2022 GRT robot (Ctrler).
+ * References image:
+ * <img src="https://media.discordapp.net/attachments/980228868805894175/1035023743606587452/unknown.png" width=200px/>
+ */
 public class InternalsSubsystem extends SubsystemBase {
 	private final XboxController controller = new XboxController(0);
-	private final Timer timer = new Timer();
 	
 	private final AnalogPotentiometer distance1 = new AnalogPotentiometer(0);
 	
-	private boolean power = true;
-	private boolean polarity = true;
+
   public InternalsSubsystem() {
 	  
   }
 
   @Override
+  //Runs every tick; 20ms tick length
   public void periodic() {
 	  
   }
-
-  @Override
-  public void simulationPeriodic() {
-	  
-  }
+  
 }
