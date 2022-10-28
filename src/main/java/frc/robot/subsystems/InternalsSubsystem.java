@@ -11,6 +11,7 @@ import com.revrobotics.ColorSensorV3;
 
 import edu.wpi.first.wpilibj.AnalogPotentiometer;
 import edu.wpi.first.wpilibj.I2C;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
@@ -21,13 +22,16 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
  * width=200px/>
  */
 public class InternalsSubsystem extends SubsystemBase {
+	// Constants
+	private static final Timer SHOOTER_TIMER = new Timer();
+	
 	// Interface
 	private static final XboxController XBOX_CONTROLLER = new XboxController(0);
 
 	// Output
 	private static final WPI_TalonSRX UPPER_TSRX = new WPI_TalonSRX(14);
 	private static final WPI_TalonSRX LOWER_TSRX = new WPI_TalonSRX(13);
-	private static  final CANSparkMax FLYWHEEL_SPARKMAX = new CANSparkMax(15, MotorType.kBrushless);
+	private static final CANSparkMax FLYWHEEL_SPARKMAX = new CANSparkMax(15, MotorType.kBrushless);
 
 	// Sensing
 	private static final AnalogPotentiometer ENTRY_IR = new AnalogPotentiometer(0);
@@ -38,62 +42,140 @@ public class InternalsSubsystem extends SubsystemBase {
 	private boolean shootQueued = false;
 	private boolean ballTop = false;
 	private boolean ballBottom = true;
-	
+	private boolean shooting = false;
+	private boolean intakeUp = false;
+	private boolean intakeDown = false;
+
 	public InternalsSubsystem() {
 		FLYWHEEL_SPARKMAX.restoreFactoryDefaults();
 	}
-	
+
 	/**
-	 * Sets Persistent(TM) class variables if the subsystem should be started at a particular state (for example, a ball already present).
-	 * This command is meant for testing purposes and should not be used in production unless you know what you are doing.
+	 * Sets Persistent(TM) class variables if the subsystem should be started at a
+	 * particular state (for example, a ball already present). This command is meant
+	 * for testing purposes and should not be used in production unless you know
+	 * what you are doing.
 	 * 
 	 * @param shootQueued
 	 * @param ballTop
 	 * @param ballBottom
 	 */
-	public void setPersistentVariables(boolean shootQueued, boolean ballTop, boolean ballBottom) {
-		
+	@Deprecated
+	public void setPersistentVariables(boolean shootQueued, boolean ballTop, boolean ballBottom, boolean shooting, boolean intakeUp, boolean intakeDown) {
 		this.shootQueued = shootQueued;
 		this.ballBottom = ballBottom;
 		this.ballTop = ballTop;
 		
+		
+		this.shooting = shooting;
+		this.intakeUp = intakeUp;
+		this.intakeDown = intakeDown;
 	}
 
 	@Override
 	// Runs every tick; 20ms tick length
 	public void periodic() {
-		//Queue or cancel a shoot operation
-		if(!shootQueued) {
-			shootQueued = XBOX_CONTROLLER.getAButtonPressed();
-		}else {
-			shootQueued = !XBOX_CONTROLLER.getBButtonPressed();
+		// Update Persistent(TM) variables
+		updatePersistent();
+
+		// Set state variables (multiple states can coincide)
+		if (shouldShoot()) {
+			shooting = true;
+			shootQueued = false;
+			SHOOTER_TIMER.reset();
+		}
+
+		if(shouldAccept()) {
+			intakeDown = true;
 		}
 		
-		//Shoot and reset variables if shoot is queued.
-		if(shouldShoot()) {
-			if(!ballTop) {
-				shootQueued = false;
-				ballTop = false;
+		if(shouldMoveUp()) {
+			intakeUp = true;
+		}
+		
+		//Resolve state variables
+		if(shooting) {
+			UPPER_TSRX.set(0.5);
+			FLYWHEEL_SPARKMAX.set(1);
+			
+			if(SHOOTER_TIMER.get() > 3D) {
+				shooting = false;
+				UPPER_TSRX.set(0);
+				FLYWHEEL_SPARKMAX.set(0);
 			}
 		}
 		
-		//Move ball upward if there is no ball at top.
-		if(ballBottom && !ballTop) {
+		if(intakeUp) {
+			LOWER_TSRX.set(0.5);
 			
+			if(ballTop) {
+				LOWER_TSRX.set(0);
+				intakeUp = false;
+			}
 		}
 		
-		//Move ball inward if there is space
-		if(!ballBottom) {
+		if(intakeDown) {
+			LOWER_TSRX.set(0.5);
 			
+			if(ballBottom) {
+				LOWER_TSRX.set(0);
+				intakeDown = false;
+			}
 		}
+	}
+
+	/**
+	 * Invoke top motors to stage, then flywheel to shoot the ball.
+	 * 
+	 * Modify this method directly if you need more steps to be completed (such as
+	 * aiming) before you shoot.
+	 * 
+	 * @return Whether the shoot should activate.
+	 */
+	private boolean shouldShoot() {
+		// Returns true if there is a ball near the top IR, a shot is queued, and the mech isn't already shooting.
+		return ballTop && shootQueued && !shooting;
 	}
 	
 	/**
-	 * Modify this method directly if you need more steps to be completed (such as aiming) before you shoot.
-	 * @return Whether the shoot should activate.
+	 * Invoke mechanism to activate bottom motor and store new ball at bottom position.
+	 * 
+	 * Modify this method directly if more steps need to be completed before accepting a ball from intake.
+	 * 
+	 * @return Whether ball should be taken in
 	 */
-	public boolean shouldShoot() {
-		//Returns true if there is a ball near the top IR and a shot is queued.
-		return ballTop && shootQueued;
+	private boolean shouldAccept() {
+		//If there's a ball at entry, there's no ball at the bottom position, and we aren't already accepting a ball
+		return !ballBottom && ENTRY_IR.get() >= 0.7 && !intakeDown;
+	}
+	
+	/**
+	 * Invoke mechanism to activate bottom motor to store a ball at the top position
+	 * 
+	 * Modify this method directly if more steps need to be completed before moving a ball upward.
+	 * 
+	 * @return Whether the ball should move up
+	 */
+	private boolean shouldMoveUp() {
+		//If there's a ball at the bottom, none at the top, and we aren't already raising a ball
+		return ballBottom && !ballTop && !intakeUp;
+	}
+
+	private void updatePersistent() {
+		// Queue or cancel a shoot operation
+		if (!shootQueued) {
+			shootQueued = XBOX_CONTROLLER.getAButtonPressed();
+		} else {
+			shootQueued = !XBOX_CONTROLLER.getBButtonPressed();
+		}
+		
+		//Is there a ball at the bottom?
+		if(MIDDLE_COLOR.getProximity() >= 1500) {
+			ballBottom = true;
+		}
+		
+		if(UPPER_IR.get() >= 0.7) {
+			ballTop = true;
+		}
 	}
 }
