@@ -41,13 +41,15 @@ public class InternalsSubsystem extends SubsystemBase {
 	// Persistent(TM)
 	private boolean shootQueued = false;
 	private boolean ballTop = false;
-	private boolean ballBottom = true;
+	private boolean ballBottom = false;
 	private boolean shooting = false;
 	private boolean intakeUp = false;
 	private boolean intakeDown = false;
 
 	public InternalsSubsystem() {
 		FLYWHEEL_SPARKMAX.restoreFactoryDefaults();
+		UPPER_TSRX.configFactoryDefault();
+		LOWER_TSRX.configFactoryDefault();
 	}
 
 	/**
@@ -77,6 +79,9 @@ public class InternalsSubsystem extends SubsystemBase {
 	public void periodic() {
 		// Update Persistent(TM) variables
 		updatePersistent();
+		
+		//run flywheel
+		FLYWHEEL_SPARKMAX.set(0.35);
 
 		// Set state variables (multiple states can coincide)
 		if (shouldShoot()) {
@@ -95,8 +100,7 @@ public class InternalsSubsystem extends SubsystemBase {
 		
 		//Resolve state variables
 		if(shooting) {
-			UPPER_TSRX.set(0.5);
-			FLYWHEEL_SPARKMAX.set(1);
+			UPPER_TSRX.set(-0.25);
 			
 			if(SHOOTER_TIMER.get() > 3D) {
 				shooting = false;
@@ -106,22 +110,27 @@ public class InternalsSubsystem extends SubsystemBase {
 		}
 		
 		if(intakeUp) {
-			LOWER_TSRX.set(0.5);
+			UPPER_TSRX.set(-0.25);
+			LOWER_TSRX.set(-0.25);
 			
 			if(ballTop) {
+				UPPER_TSRX.set(0);
 				LOWER_TSRX.set(0);
 				intakeUp = false;
+				ballBottom = false;
 			}
 		}
 		
 		if(intakeDown) {
-			LOWER_TSRX.set(0.5);
+			LOWER_TSRX.set(-0.25);
 			
 			if(ballBottom) {
 				LOWER_TSRX.set(0);
 				intakeDown = false;
 			}
 		}
+		
+		System.out.println(shooting + " " + intakeDown + " " + intakeUp + " " + ballTop + " " + ballBottom + " " + shootQueued);
 	}
 
 	/**
@@ -146,7 +155,7 @@ public class InternalsSubsystem extends SubsystemBase {
 	 */
 	private boolean shouldAccept() {
 		//If there's a ball at entry, there's no ball at the bottom position, and we aren't already accepting a ball
-		return !ballBottom && ENTRY_IR.get() >= 0.7 && !intakeDown;
+		return !ballBottom && ENTRY_IR.get() >= 0.08 && !intakeDown;
 	}
 	
 	/**
@@ -170,11 +179,11 @@ public class InternalsSubsystem extends SubsystemBase {
 		}
 		
 		//Is there a ball at the bottom?
-		if(MIDDLE_COLOR.getProximity() >= 1500) {
+		if(MIDDLE_COLOR.getProximity() >= 1400) {
 			ballBottom = true;
 		}
 		
-		if(UPPER_IR.get() >= 0.7) {
+		if(UPPER_IR.get() >= 0.35) {
 			ballTop = true;
 		}
 	}
